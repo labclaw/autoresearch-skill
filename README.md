@@ -43,9 +43,9 @@ Copy the skill to your Claude Code skills directory:
 mkdir -p ~/.claude/skills/autoresearch
 cp .claude/skills/autoresearch/SKILL.md ~/.claude/skills/autoresearch/SKILL.md
 
-# Or project-level (this project only)
-mkdir -p .claude/skills/autoresearch
-cp .claude/skills/autoresearch/SKILL.md .claude/skills/autoresearch/SKILL.md
+# Or project-level (current project only, after cloning this repo)
+mkdir -p /path/to/your/project/.claude/skills/autoresearch
+cp .claude/skills/autoresearch/SKILL.md /path/to/your/project/.claude/skills/autoresearch/
 ```
 
 Or one-liner from GitHub:
@@ -115,10 +115,10 @@ Top improvements:
 /autoresearch "maximize test pass count" "pytest --tb=no -q 2>&1 | tail -1" "src/ tests/"
 ```
 
-### Build performance
+### Build size
 
 ```
-/autoresearch "minimize build time" "time npm run build 2>&1 | grep real" "webpack.config.js src/"
+/autoresearch "minimize bundle size bytes" "npm run build 2>&1 | grep -oP 'Total: \K[\d.]+'" "webpack.config.js src/"
 ```
 
 ### Code quality

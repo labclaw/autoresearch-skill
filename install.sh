@@ -10,8 +10,13 @@ SKILL_SRC="${SCRIPT_DIR}/.claude/skills/autoresearch/SKILL.md"
 if [ ! -f "$SKILL_SRC" ]; then
   echo "Downloading from GitHub..."
   mkdir -p "$SKILL_DIR"
-  curl -sL "https://raw.githubusercontent.com/labclaw/autoresearch-skill/main/.claude/skills/autoresearch/SKILL.md" \
+  curl -sfL "https://raw.githubusercontent.com/labclaw/autoresearch-skill/main/.claude/skills/autoresearch/SKILL.md" \
     -o "${SKILL_DIR}/SKILL.md"
+  if [ ! -s "${SKILL_DIR}/SKILL.md" ]; then
+    echo "ERROR: Download failed or file is empty. Check the URL."
+    rm -f "${SKILL_DIR}/SKILL.md"
+    exit 1
+  fi
   echo "Installed to ${SKILL_DIR}/SKILL.md"
   exit 0
 fi

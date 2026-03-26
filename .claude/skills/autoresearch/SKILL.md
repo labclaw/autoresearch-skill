@@ -44,21 +44,26 @@ echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'N/A')"
 Parse the user's request from `$ARGUMENTS`. If not provided or unclear, ask for:
 
 1. **Objective**: What are we optimizing? (e.g., "minimize val_bpb", "maximize test pass rate", "minimize bundle size", "maximize extraction accuracy")
-2. **Measure command**: How do we measure it? A single shell command that outputs the metric. (e.g., `uv run pytest --tb=no -q | tail -1`, `node benchmark.js | grep score`)
-3. **Edit scope**: Which files can you modify? (e.g., `src/model.py`, `src/**/*.ts`, `train.py`)
-4. **Timeout**: Max time per experiment. Default: 5 minutes.
-5. **Branch tag**: Propose a tag based on today's date (e.g., `mar26`). The branch `autoresearch/<tag>` must not already exist.
+2. **Direction**: Are we minimizing or maximizing? (e.g., "minimize" for loss/errors, "maximize" for accuracy/pass count)
+3. **Measure command**: How do we measure it? A single shell command that outputs a **single number**. (e.g., `uv run pytest --tb=no -q 2>&1 | grep -oP '\d+ passed' | grep -oP '\d+'`, `node benchmark.js | grep -oP 'score: \K[\d.]+'`)
+4. **Edit scope**: Which files can you modify? (e.g., `src/model.py`, `src/**/*.ts`, `train.py`)
+5. **Timeout**: Max time per experiment. Default: 5 minutes.
+6. **Branch tag**: Propose a tag based on today's date (e.g., `mar26`). If the branch `autoresearch/<tag>` already exists, append a number (e.g., `mar26-2`).
 
 Then:
 
 1. Create branch: `git checkout -b autoresearch/<tag>`
 2. Read all in-scope files for full context
-3. Create `results.tsv` with header row:
+3. Add `results.tsv` and `run.log` to `.gitignore` (create if needed):
+   ```bash
+   echo -e "results.tsv\nrun.log" >> .gitignore
    ```
-   commit	metric	status	description
+4. Create `results.tsv` with header row:
    ```
-4. Run the baseline (no changes) and record it as the first row
-5. Confirm setup with the human, then begin the loop
+   commit	metric	direction	status	description
+   ```
+5. Run the baseline (no changes) and record it as the first row
+6. Confirm setup with the human, then begin the loop
 
 **Once the human confirms, you are autonomous. Do not ask again.**
 
@@ -86,32 +91,44 @@ Edit the in-scope files. Keep changes **minimal and focused** — one idea per e
 - Equal metric but simpler code → keep
 
 ### Step 3 — Commit
+Stage only in-scope files (never `git add -A` — it would capture results.tsv, run.log, .env):
 ```bash
-git add -A && git commit -m "experiment: <short description>"
+git add <in-scope-files> && git commit -m "experiment: <short description>"
 ```
 
 ### Step 4 — Run
-Execute the measure command with output redirected:
+Clear stale output, then execute the measure command:
 ```bash
+: > run.log
 timeout <TIMEOUT> bash -c '<MEASURE_COMMAND>' > run.log 2>&1
 ```
+Note: on macOS, `timeout` may require `brew install coreutils` (provides `gtimeout`).
 
 ### Step 5 — Evaluate
-Extract the metric from `run.log`. Compare to the current best.
+Extract the **numeric metric** from `run.log`. Compare to the current best.
 
-- **Improved** (metric is better): **KEEP**. Log as `keep`. This commit stays. Update the best-known metric.
+Use the **direction** established in Phase 0:
+- If direction = **minimize**: improved means metric < current best
+- If direction = **maximize**: improved means metric > current best
+
+Decision:
+- **Improved**: **KEEP**. Log as `keep`. This commit stays. Update the best-known metric.
 - **Equal or worse**: **DISCARD**. Log as `discard`. Revert: `git reset --hard HEAD~1`
-- **Crashed/timed out**: **CRASH**. Read `tail -50 run.log` for the error.
+- **Crashed/timed out**: **CRASH**. Log metric as `ERR` (never `0` — a zero could be a valid metric). Read `tail -50 run.log` for the error.
   - If trivially fixable (typo, import): fix and re-run.
   - If fundamentally broken: log as `crash`, revert, move on.
+
+**Plateau detection:** If you see 10+ consecutive discards, pause to reassess strategy.
+Read `results.tsv` for patterns, research new approaches, then try a fundamentally
+different direction. Do NOT keep doing incremental variations of a failed approach.
 
 ### Step 6 — Log
 Append to `results.tsv` (tab-separated):
 ```
-<commit-hash-7char>	<metric-value>	<keep|discard|crash>	<description>
+<commit-hash-7char>	<metric-value-or-ERR>	<keep|discard|crash>	<description>
 ```
 
-**Do NOT commit results.tsv** — leave it untracked so reverts don't lose the log.
+**Do NOT commit results.tsv** — it's in `.gitignore` so reverts don't lose the log.
 
 ### Step 7 — Repeat
 Go back to Step 1. **NEVER STOP.**
@@ -164,8 +181,7 @@ If you run out of ideas, **use your full power**:
 
 ## Power Mode: Multi-Agent Acceleration
 
-When you have access to Agent tools or external CLI agents (ccz, cczt, cxc),
-use them to accelerate the loop:
+When you have access to the Agent tool, use it to accelerate the loop:
 
 **Parallel research while running experiments:**
 While an experiment is running (Step 4), dispatch background agents to:
