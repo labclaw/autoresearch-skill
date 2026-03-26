@@ -60,7 +60,7 @@ Then:
    ```
 4. Create `results.tsv` with header row:
    ```
-   commit	metric	direction	status	description
+   commit	metric	status	description
    ```
 5. Run the baseline (no changes) and record it as the first row
 6. Confirm setup with the human, then begin the loop
@@ -100,7 +100,7 @@ git add <in-scope-files> && git commit -m "experiment: <short description>"
 Clear stale output, then execute the measure command:
 ```bash
 : > run.log
-timeout <TIMEOUT> bash -c '<MEASURE_COMMAND>' > run.log 2>&1
+timeout -k 30 <TIMEOUT> bash -c '<MEASURE_COMMAND>' > run.log 2>&1
 ```
 Note: on macOS, `timeout` may require `brew install coreutils` (provides `gtimeout`).
 
@@ -111,14 +111,16 @@ Use the **direction** established in Phase 0:
 - If direction = **minimize**: improved means metric < current best
 - If direction = **maximize**: improved means metric > current best
 
+If no numeric value can be extracted from `run.log`, treat it as a crash.
+
 Decision:
 - **Improved**: **KEEP**. Log as `keep`. This commit stays. Update the best-known metric.
 - **Equal or worse**: **DISCARD**. Log as `discard`. Revert: `git reset --hard HEAD~1`
-- **Crashed/timed out**: **CRASH**. Log metric as `ERR` (never `0` — a zero could be a valid metric). Read `tail -50 run.log` for the error.
+- **Crashed/timed out/non-numeric**: **CRASH**. Log metric as `ERR` (never `0` — a zero could be a valid metric). Read `tail -50 run.log` for the error.
   - If trivially fixable (typo, import): fix and re-run.
   - If fundamentally broken: log as `crash`, revert, move on.
 
-**Plateau detection:** If you see 10+ consecutive discards, pause to reassess strategy.
+**Plateau detection:** If you see 10+ consecutive discards or crashes, pause to reassess strategy.
 Read `results.tsv` for patterns, research new approaches, then try a fundamentally
 different direction. Do NOT keep doing incremental variations of a failed approach.
 
@@ -171,7 +173,7 @@ If you run out of ideas, **use your full power**:
 
 ### Logging discipline
 - Every experiment gets a row in `results.tsv`, no exceptions
-- Use `0.000000` for crashed experiments
+- Use `ERR` for crashed experiments (never `0` — zero could be a valid metric)
 - Descriptions should be short but specific enough to understand the change
 
 ### Git hygiene
