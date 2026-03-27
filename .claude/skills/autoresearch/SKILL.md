@@ -54,16 +54,35 @@ Then:
 
 1. Create branch: `git checkout -b autoresearch/<tag>`
 2. Read all in-scope files for full context
-3. Add `results.tsv` and `run.log` to `.gitignore` (create if needed):
+3. Add `results.tsv`, `run.log`, and `.autoresearch_wandb.json` to `.gitignore` (create if needed):
    ```bash
-   echo -e "results.tsv\nrun.log" >> .gitignore
+   echo -e "results.tsv\nrun.log\n.autoresearch_wandb.json" >> .gitignore
    ```
 4. Create `results.tsv` with header row:
    ```
    commit	metric	status	description
    ```
-5. Run the baseline (no changes) and record it as the first row
-6. Confirm setup with the human, then begin the loop
+5. **Launch dashboard** (local web UI — zero deps, stdlib only):
+   ```bash
+   python dashboard/server.py --port 8420 --results results.tsv &
+   echo "Dashboard: http://localhost:8420"
+   ```
+   The dashboard auto-refreshes every 3s showing metric trends, keep/discard/crash
+   stats, and a full experiment table. Works in any browser. No install needed.
+
+6. **Initialize wandb** (optional remote logging — requires `pip install wandb`):
+   ```bash
+   # Only if the user wants remote logging
+   python dashboard/wandb_logger.py --init \
+     --project autoresearch-<tag> \
+     --name "<objective>" \
+     --config '{"objective":"<objective>","direction":"<direction>","scope":"<edit-scope>"}'
+   ```
+   If wandb is not installed or not wanted, skip this step. All data is always
+   available locally via `results.tsv` and the dashboard regardless.
+
+7. Run the baseline (no changes) and record it as the first row
+8. Confirm setup with the human, then begin the loop
 
 **Once the human confirms, you are autonomous. Do not ask again.**
 
@@ -130,7 +149,15 @@ Append to `results.tsv` (tab-separated):
 <commit-hash-7char>	<metric-value-or-ERR>	<keep|discard|crash>	<description>
 ```
 
+**Wandb sync** (if initialized in Phase 0):
+```bash
+python dashboard/wandb_logger.py --log \
+  --metric <metric-value-or-nan> --status <keep|discard|crash> \
+  --desc "<description>"
+```
+
 **Do NOT commit results.tsv** — it's in `.gitignore` so reverts don't lose the log.
+The dashboard picks up changes automatically (3s poll). No manual refresh needed.
 
 ### Step 7 — Repeat
 Go back to Step 1. **NEVER STOP.**
@@ -210,7 +237,17 @@ after that is happening in parallel.
 
 ## Phase 2: Summary (when human returns)
 
-When the human interrupts or you detect they're back, produce a summary:
+When the human interrupts or you detect they're back:
+
+1. **Finish wandb run** (if initialized):
+   ```bash
+   python dashboard/wandb_logger.py --finish
+   ```
+2. **Stop the dashboard** (if still running):
+   ```bash
+   pkill -f "dashboard/server.py" 2>/dev/null
+   ```
+3. Produce a summary:
 
 ```
 === Autoresearch Summary ===

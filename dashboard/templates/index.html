@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Autoresearch Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e; --green: #3fb950; --red: #f85149; --yellow: #d29922; --blue: #58a6ff; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .header h1 { font-size: 1.5rem; font-weight: 600; }
+  .header .live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.85rem; }
+  .header .live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .stat-card .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .stat-card .value { font-size: 1.8rem; font-weight: 700; }
+  .stat-card .value.green { color: var(--green); }
+  .stat-card .value.red { color: var(--red); }
+  .stat-card .value.yellow { color: var(--yellow); }
+  .stat-card .value.blue { color: var(--blue); }
+  .chart-container { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+  .chart-container h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th { background: #1c2129; text-align: left; padding: 10px 14px; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 0.9rem; }
+  tr:hover td { background: rgba(88, 166, 255, 0.04); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge.keep { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+  .badge.discard { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+  .badge.crash { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
+  .empty { text-align: center; padding: 48px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Autoresearch Dashboard</h1>
+  <div class="live"><div class="dot"></div><span id="update-time">Waiting for data...</span></div>
+</div>
+
+<div class="stats">
+  <div class="stat-card"><div class="label">Total</div><div class="value" id="s-total">0</div></div>
+  <div class="stat-card"><div class="label">Kept</div><div class="value green" id="s-kept">0</div></div>
+  <div class="stat-card"><div class="label">Discarded</div><div class="value red" id="s-discarded">0</div></div>
+  <div class="stat-card"><div class="label">Crashed</div><div class="value yellow" id="s-crashed">0</div></div>
+  <div class="stat-card"><div class="label">Best</div><div class="value blue" id="s-best">&mdash;</div></div>
+  <div class="stat-card"><div class="label">Keep Rate</div><div class="value" id="s-rate">&mdash;</div></div>
+</div>
+
+<div class="chart-container">
+  <h2>Metric Over Time</h2>
+  <canvas id="metricChart" height="100"></canvas>
+</div>
+
+<table>
+  <thead><tr><th>#</th><th>Commit</th><th>Metric</th><th>Status</th><th>Description</th></tr></thead>
+  <tbody id="tbody"></tbody>
+</table>
+
+<script>
+let chart = null;
+let lastMod = 0;
+
+function initChart() {
+  const ctx = document.getElementById('metricChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Metric (kept)', data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: [] },
+    ]},
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#e6edf3' } } },
+      scales: {
+        x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+      }
+    }
+  });
+}
+
+function update() {
+  fetch('/api/results').then(r => r.json()).then(data => {
+    const exps = data.experiments || [];
+    // Stats
+    const kept = exps.filter(e => e.status === 'keep').length;
+    const discarded = exps.filter(e => e.status === 'discard').length;
+    const crashed = exps.filter(e => e.status === 'crash').length;
+    const keptMetrics = exps.filter(e => e.status === 'keep' && e.metric && e.metric !== 'ERR').map(e => parseFloat(e.metric));
+    document.getElementById('s-total').textContent = exps.length;
+    document.getElementById('s-kept').textContent = kept;
+    document.getElementById('s-discarded').textContent = discarded;
+    document.getElementById('s-crashed').textContent = crashed;
+    document.getElementById('s-best').textContent = keptMetrics.length ? Math.max(...keptMetrics).toFixed(4) : '\u2014';
+    document.getElementById('s-rate').textContent = exps.length ? (kept / exps.length * 100).toFixed(0) + '%' : '\u2014';
+
+    // Chart — only kept experiments
+    const labels = [];
+    const values = [];
+    const colors = [];
+    exps.forEach((e, i) => {
+      if (e.status === 'keep' && e.metric && e.metric !== 'ERR') {
+        labels.push('#' + (i + 1));
+        values.push(parseFloat(e.metric));
+        colors.push('#58a6ff');
+      }
+    });
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = values;
+    chart.data.datasets[0].pointBackgroundColor = colors;
+    chart.update('none');
+
+    // Table — all experiments, newest first
+    const tbody = document.getElementById('tbody');
+    if (exps.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">No experiments yet. Run autoresearch to populate.</td></tr>';
+    } else {
+      tbody.innerHTML = exps.map((e, i) =>
+        `<tr><td>${i + 1}</td><td><code>${e.commit || ''}</code></td><td>${e.metric || ''}</td><td><span class="badge ${e.status || ''}">${e.status || ''}</span></td><td>${e.description || ''}</td></tr>`
+      ).reverse().join('');
+    }
+
+    document.getElementById('update-time').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  }).catch(() => {});
+
+  fetch('/api/status').then(r => r.json()).then(s => {
+    if (s.results_modified !== lastMod) { lastMod = s.results_modified; }
+  }).catch(() => {});
+}
+
+initChart();
+update();
+setInterval(update, 3000);
+</script>
+</body>
+</html>

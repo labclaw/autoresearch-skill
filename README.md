@@ -34,18 +34,53 @@ A Claude Code skill that runs autonomous improvement loops on any codebase. Insp
 └─────────────────────────────────────────────────────┘
 ```
 
+## Dashboard & Observability
+
+### Local Web Dashboard
+
+A built-in web dashboard (zero Python dependencies, stdlib only) shows live experiment
+progress — metric trends, keep/discard/crash stats, and a full experiment table.
+
+```bash
+python dashboard/server.py --port 8420 --results results.tsv
+```
+
+Open `http://localhost:8420` in any browser. Auto-refreshes every 3 seconds.
+
+The skill automatically launches this during setup. No manual action needed.
+
+### Remote Logging with Wandb
+
+Optional integration with [Weights & Biases](https://wandb.ai) for remote experiment tracking:
+
+```bash
+# Install wandb (optional)
+pip install wandb
+
+# During autoresearch, the skill can log to wandb
+python dashboard/wandb_logger.py --init --project my-experiment --config '{"objective":"minimize loss"}'
+
+# Replay all results.tsv data to wandb after the fact
+python dashboard/wandb_logger.py --replay --project my-experiment
+```
+
+Wandb is fully optional. All data is always available locally via `results.tsv` and the dashboard.
+
 ## Install
 
 Copy the skill to your Claude Code skills directory:
 
 ```bash
-# User-level (all projects)
+# User-level (all projects) — skill only
 mkdir -p ~/.claude/skills/autoresearch
 cp .claude/skills/autoresearch/SKILL.md ~/.claude/skills/autoresearch/SKILL.md
 
 # Or project-level (current project only, after cloning this repo)
 mkdir -p /path/to/your/project/.claude/skills/autoresearch
 cp .claude/skills/autoresearch/SKILL.md /path/to/your/project/.claude/skills/autoresearch/
+
+# For dashboard + wandb support, copy the dashboard/ directory into your project:
+cp -r dashboard/ /path/to/your/project/dashboard/
 ```
 
 Or one-liner from GitHub:
@@ -54,6 +89,12 @@ Or one-liner from GitHub:
 mkdir -p ~/.claude/skills/autoresearch && \
 curl -sL https://raw.githubusercontent.com/labclaw/autoresearch-skill/main/.claude/skills/autoresearch/SKILL.md \
   -o ~/.claude/skills/autoresearch/SKILL.md
+```
+
+Or use the install script:
+
+```bash
+./install.sh
 ```
 
 ## Usage
@@ -156,6 +197,7 @@ Directly from [Karpathy's autoresearch](https://github.com/karpathy/autoresearch
 | ML architecture only | Any code changes |
 | Single GPU required | Any compute environment |
 | Claude Code / Cursor required | Claude Code only |
+| No UI | Local web dashboard + wandb integration |
 
 The loop structure is identical: **propose -> commit -> run -> evaluate -> keep/discard -> repeat**.
 
